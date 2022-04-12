@@ -121,6 +121,7 @@ const runner = async () => {
   let _limit = 100; //default: 100
   let count_failure = 0;
   let time_between_requests = 750; //ms
+  let user_counter = 0;
   let run_get_members = true;
   let run_get_messages_by_user = true;
   let start_time = Date.now();
@@ -137,7 +138,7 @@ const runner = async () => {
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
-  iterations = 2; //if override,specify. Default 'iterations' variable
+  iterations = iterations; //if override,specify. Default 'iterations' variable
   if (run_get_members) {
     for (let i = 0; i < iterations; i++) {
       await sleep(time_between_requests);
@@ -158,6 +159,9 @@ const runner = async () => {
       }
       _lastid = data.slice(-1)[0].id;
       data.map((data_user) => {
+        user_counter++;
+        data_user["user_count"] = user_counter;
+        // console.log("user_counter", data_user);
         users.push(data_user);
         users_db.push({
           updateOne: {
