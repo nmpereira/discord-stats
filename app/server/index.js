@@ -77,7 +77,7 @@ const _mainChannel = "737445530162167838";
 const _channels = "channels";
 const _id_channel = "955259436111388722";
 const _author = "548302698752245780";
-const _limit = 10;
+const _limit = 100;
 
 // https://discord.com/api/v9/guilds/735923219315425401/messages/search?author_id=548302698752245780
 // https://discord.com/api/v9/channels/737445530162167838/messages/737491428472520804/reactions/%E2%9C%85?limit=100&after=87656785241980928
@@ -116,27 +116,35 @@ async function urlCaller(url, arg1) {
 
 const runner = async () => {
   let users = [];
-  let _lastid = 963040577161687100;
+  let _lastid = 0;
   let total;
-
+  let userBool = true;
   await urlCaller(get_user_count, "").then((x) => {
     total = x[0].reactions[0].count;
   });
   console.log("total", total);
   const iterations = Math.ceil(total / _limit);
   console.log("iterations", iterations);
-  if (true) {
+  if (false) {
     // first url
-    for (let i = 0; i < 10; i++) {
+
+    while (userBool) {
+      // for (let i = 0; i < 1; i++) {
       await urlCaller(get_users_in_guild, `&after=${_lastid}`)
         .then((x) => {
-          // console.log(x);
-          if (x.length == 0) return;
+          console.log("Number of users found:", x.length);
+          if (x.length == 0) {
+            userBool = false;
+            return;
+          }
           _lastid = x.slice(-1)[0].id;
 
           x.map((x) => users.push(x));
         })
         .catch((x) => console.log("Error:", x));
+
+      // if users.length=0 break
+      // }
     }
     console.log("users", users);
     const User = new user({
