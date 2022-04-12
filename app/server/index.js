@@ -114,6 +114,7 @@ async function urlCaller(url, arg1) {
 
 const runner = async () => {
   let users = [];
+  let users_db = [];
   let _lastid = 0;
   let total;
   let userBool = true;
@@ -122,9 +123,6 @@ const runner = async () => {
   let time_between_requests = 750; //ms
   let run_get_members = true;
   let run_get_messages_by_user = false;
-  // let user_obj = {};
-
-  // let _author = "548302698752245780";
 
   await urlCaller(get_user_count, "").then(({ data, status }) => {
     total = data[0].reactions[0].count;
@@ -138,43 +136,36 @@ const runner = async () => {
   if (run_get_members) {
     for (let i = 0; i < 5; i++) {
       await sleep(time_between_requests);
-      await urlCaller(get_users_in_guild, `?limit=${_limit}&after=${_lastid}`)
-        .then(({ data, status }) => {
-          console.log("Number of users found:", data.length);
-          if (data.length == 0) {
-            userBool = false;
-            return;
-          }
-          _lastid = data.slice(-1)[0].id;
-          data.map((data_user) => {
-            // user_obj = { ...users };
+      const { data, status } = await urlCaller(
+        get_users_in_guild,
+        `?limit=${_limit}&after=${_lastid}`
+      );
 
-            // console.log(user_obj);
-            users.push(data_user);
-          });
-        })
-        .catch((err) => console.log("Error:", err));
+      console.log("Number of users found:", data.length);
+      if (data.length == 0) {
+        userBool = false;
+        return;
+      }
+      _lastid = data.slice(-1)[0].id;
+      data.map((data_user) => {
+        users.push(data_user);
+        users_db.push({
+          updateOne: {
+            filter: { id: data_user.id },
+            update: {
+              $set: data_user,
+            },
+            upsert: true, // <<==== upsert in every document
+          },
+        });
+      });
     }
     console.log("users", users);
     // const User = new UserModel({
     //   user: users,
     // });
     try {
-      // await UserModel.collection.bulkWrite([
-      //   // <<==== use the model name
-      //   {
-      //     updateOne: {
-      //       filter: { id: "<some id>" },
-      //       update: {
-      //         $set: {
-      //           /* properties to update */
-      //         },
-      //       },
-      //       upsert: true, // <<==== upsert in every document
-      //     },
-      //   },
-      //   /* other operations here... */
-      // ]);
+      await UserModel.collection.bulkWrite(users_db);
       // const writeDb = await User.insertMany();
     } catch (err) {
       console.log("db error:", err);
