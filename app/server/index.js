@@ -117,8 +117,8 @@ const runner = async () => {
   let _lastid = 0;
   let total;
   let userBool = true;
-  let _limit = 5;
-  let _author = "548302698752245780";
+  let _limit = 100;
+  // let _author = "548302698752245780";
 
   await urlCaller(get_user_count, "").then((x) => {
     total = x[0].reactions[0].count;
@@ -153,17 +153,48 @@ const runner = async () => {
       console.log("db error:", err);
     }
   }
-  // function runChild() {
-  users.forEach((e, i) => {
-    setTimeout(() => {
-      urlCaller(get_messages_by_user, `/search?author_id=${e.id}`).then((x) => {
-        console.log({
-          username: e.id,
-          total_messages: x.total_results,
-        });
+  // // function runChild() {
+  // users.forEach((e, i) => {
+  //   setTimeout(() => {
+  //     urlCaller(get_messages_by_user, `/search?author_id=${e.id}`).then((x) => {
+  //       try {
+  //         console.log({
+  //           username: e.id,
+  //           total_messages: x.total_results,
+  //         });
+  //       } catch (err) {
+  //         console.log("err:", err);
+  //       }
+  //     });
+  //   }, 500 * i);
+  // });
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  for (let i = 0; i < users.length; i++) {
+    const e = users[i];
+    await sleep(500);
+    try {
+      const x = await urlCaller(
+        get_messages_by_user,
+        `/search?author_id=${e.id}`
+      );
+      console.log({
+        username: e.id,
+        total_messages: x.total_results,
       });
-    }, 1000 * i);
-  });
+      // console.log("response", x);
+      if (x.message == "The resource is being rate limited.") {
+        i = i - 1;
+        await sleep(10000);
+      }
+      // TODO: parse this bettter :)
+    } catch (err) {
+      console.log("err:", err);
+      await sleep(10000);
+      i = i - 1;
+    }
+  }
   // }
   // setTimeout(() => runChild(), 1000);
 };
