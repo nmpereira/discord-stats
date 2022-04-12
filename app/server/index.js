@@ -76,8 +76,6 @@ const _mainChannel = "737445530162167838";
 
 const _channels = "channels";
 const _id_channel = "955259436111388722";
-const _author = "548302698752245780";
-const _limit = 100;
 
 // https://discord.com/api/v9/guilds/735923219315425401/messages/search?author_id=548302698752245780
 // https://discord.com/api/v9/channels/737445530162167838/messages/737491428472520804/reactions/%E2%9C%85?limit=100&after=87656785241980928
@@ -85,8 +83,8 @@ const _limit = 100;
 
 const get_channels = `${base_uri}${_guilds}/${_id_guild}${_channel}`;
 const get_messages_in_channel = `${base_uri}${_channels}/${_id_channel}${_messages}`;
-const get_messages_by_user = `${base_uri}${_guilds}/${_id_guild}${_messages}/search?author_id=${_author}`;
-const get_users_in_guild = `${base_uri}${_channel}/${_getAllUsers}?limit=${_limit}`;
+const get_messages_by_user = `${base_uri}${_guilds}/${_id_guild}${_messages}`;
+const get_users_in_guild = `${base_uri}${_channel}/${_getAllUsers}`;
 const get_user_count = `${base_uri}${_channels}/${_mainChannel}/${_messages}`;
 
 const getFetchAsync = async (url) => {
@@ -119,18 +117,20 @@ const runner = async () => {
   let _lastid = 0;
   let total;
   let userBool = true;
+  let _limit = 5;
+  let _author = "548302698752245780";
+
   await urlCaller(get_user_count, "").then((x) => {
     total = x[0].reactions[0].count;
   });
   console.log("total", total);
   const iterations = Math.ceil(total / _limit);
   console.log("iterations", iterations);
-  if (false) {
+  if (true) {
     // first url
-
-    while (userBool) {
-      // for (let i = 0; i < 1; i++) {
-      await urlCaller(get_users_in_guild, `&after=${_lastid}`)
+    // while (userBool) {
+    for (let i = 0; i < 5; i++) {
+      await urlCaller(get_users_in_guild, `?limit=${_limit}&after=${_lastid}`)
         .then((x) => {
           console.log("Number of users found:", x.length);
           if (x.length == 0) {
@@ -142,11 +142,8 @@ const runner = async () => {
           x.map((x) => users.push(x));
         })
         .catch((x) => console.log("Error:", x));
-
-      // if users.length=0 break
-      // }
     }
-    console.log("users", users);
+    // console.log("users", users);
     const User = new user({
       user: users,
     });
@@ -156,14 +153,19 @@ const runner = async () => {
       console.log("db error:", err);
     }
   }
-
-  function grablastid(arr) {
-    let res;
-    if (arr.length == 0) return 0;
-    res = arr.slice(-1)[0].id;
-
-    return res;
-  }
+  // function runChild() {
+  users.forEach((e, i) => {
+    setTimeout(() => {
+      urlCaller(get_messages_by_user, `/search?author_id=${e.id}`).then((x) => {
+        console.log({
+          username: e.id,
+          total_messages: x.total_results,
+        });
+      });
+    }, 1000 * i);
+  });
+  // }
+  // setTimeout(() => runChild(), 1000);
 };
 
 runner();
