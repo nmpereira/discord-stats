@@ -4,7 +4,7 @@ const app = express();
 const dotenv = require("dotenv").config();
 const fs = require("fs");
 const fetch = require("node-fetch");
-const user = require("./models/users");
+const UserModel = require("./models/users");
 
 const NODE_ENV = process.env.NODE_ENV || "Local";
 const authorize_token = process.env.authorize_token;
@@ -20,7 +20,7 @@ console.log("Env:", NODE_ENV);
 app
   .get("/", async (req, res) => {
     try {
-      const users = await user.find();
+      const users = await UserModel.find();
       res.json(users);
       // res.redirect("/");
     } catch (err) {
@@ -29,7 +29,7 @@ app
   })
   .get("/users", async (req, res) => {
     try {
-      const users = await user.find();
+      const users = await UserModel.find();
       res.json(users);
       // res.redirect("/");
     } catch (err) {
@@ -98,9 +98,9 @@ const getFetchAsync = async (url) => {
       },
     });
 
-    const resData = await res.json();
-
-    return resData;
+    const data = await res.json();
+    const status = res.status;
+    return { data, status };
   } catch (err) {
     console.log("error:", err);
   }
@@ -117,86 +117,121 @@ const runner = async () => {
   let _lastid = 0;
   let total;
   let userBool = true;
-  let _limit = 100;
+  let _limit = 5;
+  let count_failure = 0;
+  let time_between_requests = 750; //ms
+  let run_get_members = true;
+  let run_get_messages_by_user = false;
+  // let user_obj = {};
+
   // let _author = "548302698752245780";
 
-  await urlCaller(get_user_count, "").then((x) => {
-    total = x[0].reactions[0].count;
+  await urlCaller(get_user_count, "").then(({ data, status }) => {
+    total = data[0].reactions[0].count;
   });
   console.log("total", total);
   const iterations = Math.ceil(total / _limit);
   console.log("iterations", iterations);
-  if (true) {
-    // first url
-    // while (userBool) {
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  if (run_get_members) {
     for (let i = 0; i < 5; i++) {
+      await sleep(time_between_requests);
       await urlCaller(get_users_in_guild, `?limit=${_limit}&after=${_lastid}`)
-        .then((x) => {
-          console.log("Number of users found:", x.length);
-          if (x.length == 0) {
+        .then(({ data, status }) => {
+          console.log("Number of users found:", data.length);
+          if (data.length == 0) {
             userBool = false;
             return;
           }
-          _lastid = x.slice(-1)[0].id;
+          _lastid = data.slice(-1)[0].id;
+          data.map((data_user) => {
+            // user_obj = { ...users };
 
-          x.map((x) => users.push(x));
+            // console.log(user_obj);
+            users.push(data_user);
+          });
         })
-        .catch((x) => console.log("Error:", x));
+        .catch((err) => console.log("Error:", err));
     }
-    // console.log("users", users);
-    const User = new user({
-      user: users,
-    });
+    console.log("users", users);
+    // const User = new UserModel({
+    //   user: users,
+    // });
     try {
-      // const writeDb = await User.save();
+      // await UserModel.collection.bulkWrite([
+      //   // <<==== use the model name
+      //   {
+      //     updateOne: {
+      //       filter: { id: "<some id>" },
+      //       update: {
+      //         $set: {
+      //           /* properties to update */
+      //         },
+      //       },
+      //       upsert: true, // <<==== upsert in every document
+      //     },
+      //   },
+      //   /* other operations here... */
+      // ]);
+      // const writeDb = await User.insertMany();
     } catch (err) {
       console.log("db error:", err);
     }
   }
-  // // function runChild() {
-  // users.forEach((e, i) => {
-  //   setTimeout(() => {
-  //     urlCaller(get_messages_by_user, `/search?author_id=${e.id}`).then((x) => {
-  //       try {
-  //         console.log({
-  //           username: e.id,
-  //           total_messages: x.total_results,
-  //         });
-  //       } catch (err) {
-  //         console.log("err:", err);
-  //       }
-  //     });
-  //   }, 500 * i);
-  // });
-  function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-  for (let i = 0; i < users.length; i++) {
-    const e = users[i];
-    await sleep(500);
-    try {
-      const x = await urlCaller(
-        get_messages_by_user,
-        `/search?author_id=${e.id}`
-      );
-      console.log({
-        username: e.id,
-        total_messages: x.total_results,
-      });
-      // console.log("response", x);
-      if (x.message == "The resource is being rate limited.") {
-        i = i - 1;
-        await sleep(10000);
+  if (run_get_messages_by_user) {
+    for (let i = 0; i < users.length; i++) {
+      const e = users[i];
+      await sleep(time_between_requests);
+      if (count_failure >= 10) {
+        throw new Error(`Too many failed requests: ${count_failure}`);
       }
-      // TODO: parse this bettter :)
-    } catch (err) {
-      console.log("err:", err);
-      await sleep(10000);
-      i = i - 1;
-    }
-  }
-  // }
-  // setTimeout(() => runChild(), 1000);
-};
+      try {
+        const { data, status } = await urlCaller(
+          get_messages_by_user,
+          `/search?author_id=${e.id}`
+        );
+        console.log({
+          username: e.id,
+          total_messages: data.total_results,
+        });
 
+        if (status >= 300) {
+          count_failure++;
+          console.log("Error message:", status, data.message);
+          if (status == 429) {
+            console.log(
+              "Rate limit error:",
+              data.message,
+              "Code:",
+              status,
+              "retry after:",
+              data.retry_after
+            );
+            i = i - 1;
+            const retry_ms = Math.ceil(data.retry_after + 1) * 1000;
+            await sleep(retry_ms);
+          } else {
+            console.log(
+              "Error message (Non 429 code):",
+              status,
+              "message:",
+              data.message
+            );
+          }
+
+          continue;
+        }
+        count_failure = 0;
+      } catch (err) {
+        console.log("err:", err);
+        await sleep(10000);
+        count_failure++;
+        i = i - 1;
+      }
+    }
+    console.log("donezo!");
+  }
+};
 runner();
