@@ -17,10 +17,13 @@ db.once("open", () => console.error("Connected to db"));
 app.listen(port, () => console.log(`The app is running on port ${port}!`));
 console.log("Env:", NODE_ENV);
 
+const getUsersDb = async () => {
+  return await UserModel.find().lean();
+};
 app
   .get("/", async (req, res) => {
     try {
-      const users = await UserModel.find();
+      const users = await getUsersDb();
       res.json(users);
       // res.redirect("/");
     } catch (err) {
@@ -29,7 +32,7 @@ app
   })
   .get("/users", async (req, res) => {
     try {
-      const users = await UserModel.find();
+      const users = await getUsersDb();
       res.json(users);
       // res.redirect("/");
     } catch (err) {
@@ -122,7 +125,8 @@ const runner = async () => {
   let count_failure = 0;
   let time_between_requests = 750; //ms
   let user_counter = 0;
-  let run_get_members = true;
+  let users_found_counter = 0;
+  let run_get_members = false;
   let run_get_messages_by_user = true;
   let start_time = Date.now();
   const time_since_start = (time) => {
@@ -138,7 +142,7 @@ const runner = async () => {
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
-  iterations = iterations; //if override,specify. Default 'iterations' variable
+  iterations = 5; //if override,specify. Default 'iterations' variable
   if (run_get_members) {
     for (let i = 0; i < iterations; i++) {
       await sleep(time_between_requests);
@@ -146,12 +150,13 @@ const runner = async () => {
         get_users_in_guild,
         `?limit=${_limit}&after=${_lastid}`
       );
-
+      users_found_counter += data.length;
       console.log(
-        "Number of users found:",
-        data.length,
-        "Time Elapsed:",
-        time_since_start(start_time)
+        `Number of users found: ${
+          data.length
+        }|Total Found: ${users_found_counter} | Time Elapsed: ${time_since_start(
+          start_time
+        )}`
       );
       if (data.length == 0) {
         userBool = false;
@@ -160,12 +165,14 @@ const runner = async () => {
       _lastid = data.slice(-1)[0].id;
       data.map((data_user) => {
         user_counter++;
+        data_user["disc_id"] = data_user["id"];
+        delete data_user["id"];
         data_user["user_count"] = user_counter;
         // console.log("user_counter", data_user);
         users.push(data_user);
         users_db.push({
           updateOne: {
-            filter: { id: data_user.id },
+            filter: { disc_id: data_user.disc_id },
             update: {
               $set: data_user,
             },
@@ -173,22 +180,26 @@ const runner = async () => {
           },
         });
       });
+      try {
+        await UserModel.collection.bulkWrite(users_db);
+        // const writeDb = await User.insertMany();
+      } catch (err) {
+        console.log("db error:", err);
+      }
     }
     // console.log("users", users);
     // const User = new UserModel({
     //   user: users,
     // });
-    try {
-      await UserModel.collection.bulkWrite(users_db);
-      // const writeDb = await User.insertMany();
-    } catch (err) {
-      console.log("db error:", err);
-    }
+    console.log("donezo getting users!");
   }
   if (run_get_messages_by_user) {
     let Get_Message_start_time = Date.now();
+    const users = await getUsersDb();
     for (let i = 0; i < users.length; i++) {
-      const e = users[i];
+      const user = users[i];
+      const disc_id = user.disc_id;
+
       await sleep(time_between_requests);
       if (count_failure >= 10) {
         throw new Error(`Too many failed requests: ${count_failure}`);
@@ -196,17 +207,17 @@ const runner = async () => {
       try {
         const { data, status } = await urlCaller(
           get_messages_by_user,
-          `/search?author_id=${e.id}`
+          `/search?author_id=${disc_id}`
         );
         // update the db with this
         const message_obj = {
-          id: e.id,
+          disc_id: disc_id,
           total_messages: data.total_results,
           messages: data.messages,
         };
 
         console.log(
-          `Number of messages for ${message_obj.id}:${
+          `Number of messages for ${message_obj.disc_id}:${
             message_obj.total_messages
           }. Time Elapsed: ${time_since_start(
             start_time
@@ -216,7 +227,7 @@ const runner = async () => {
         );
         users_db.push({
           updateOne: {
-            filter: { id: message_obj.id },
+            filter: { disc_id: message_obj.disc_id },
             update: {
               $set: message_obj,
             },
@@ -264,7 +275,7 @@ const runner = async () => {
         i = i - 1;
       }
     }
-    console.log("donezo!");
+    console.log("donezo getting messages!");
   }
 };
 runner();
