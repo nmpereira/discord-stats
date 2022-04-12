@@ -74,7 +74,7 @@ const _getAllUsers =
   "737445530162167838/messages/737491428472520804/reactions/%E2%9C%85";
 const _mainChannel = "737445530162167838";
 
-const _channels = "channels";
+// const _channels = "channels";
 const _id_channel = "955259436111388722";
 
 // https://discord.com/api/v9/guilds/735923219315425401/messages/search?author_id=548302698752245780
@@ -82,10 +82,10 @@ const _id_channel = "955259436111388722";
 // https://discord.com/api/v9/channels/737445530162167838/messages
 
 const get_channels = `${base_uri}${_guilds}/${_id_guild}${_channel}`;
-const get_messages_in_channel = `${base_uri}${_channels}/${_id_channel}${_messages}`;
+const get_messages_in_channel = `${base_uri}${_channel}/${_id_channel}${_messages}`;
 const get_messages_by_user = `${base_uri}${_guilds}/${_id_guild}${_messages}`;
 const get_users_in_guild = `${base_uri}${_channel}/${_getAllUsers}`;
-const get_user_count = `${base_uri}${_channels}/${_mainChannel}/${_messages}`;
+const get_user_count = `${base_uri}${_channel}/${_mainChannel}${_messages}`;
 
 const getFetchAsync = async (url) => {
   try {
@@ -118,30 +118,40 @@ const runner = async () => {
   let _lastid = 0;
   let total;
   let userBool = true;
-  let _limit = 5;
+  let _limit = 100; //default: 100
   let count_failure = 0;
   let time_between_requests = 750; //ms
   let run_get_members = true;
-  let run_get_messages_by_user = false;
+  let run_get_messages_by_user = true;
+  let start_time = Date.now();
+  const time_since_start = (time) => {
+    return ((Date.now() - time) / 1000).toFixed(2);
+  };
 
   await urlCaller(get_user_count, "").then(({ data, status }) => {
     total = data[0].reactions[0].count;
   });
   console.log("total", total);
-  const iterations = Math.ceil(total / _limit);
+  let iterations = Math.ceil(total / _limit);
   console.log("iterations", iterations);
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+  iterations = 2; //if override,specify. Default 'iterations' variable
   if (run_get_members) {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < iterations; i++) {
       await sleep(time_between_requests);
       const { data, status } = await urlCaller(
         get_users_in_guild,
         `?limit=${_limit}&after=${_lastid}`
       );
 
-      console.log("Number of users found:", data.length);
+      console.log(
+        "Number of users found:",
+        data.length,
+        "Time Elapsed:",
+        time_since_start(start_time)
+      );
       if (data.length == 0) {
         userBool = false;
         return;
@@ -160,7 +170,7 @@ const runner = async () => {
         });
       });
     }
-    console.log("users", users);
+    // console.log("users", users);
     // const User = new UserModel({
     //   user: users,
     // });
@@ -172,6 +182,7 @@ const runner = async () => {
     }
   }
   if (run_get_messages_by_user) {
+    let Get_Message_start_time = Date.now();
     for (let i = 0; i < users.length; i++) {
       const e = users[i];
       await sleep(time_between_requests);
@@ -183,10 +194,37 @@ const runner = async () => {
           get_messages_by_user,
           `/search?author_id=${e.id}`
         );
-        console.log({
-          username: e.id,
+        // update the db with this
+        const message_obj = {
+          id: e.id,
           total_messages: data.total_results,
+          messages: data.messages,
+        };
+
+        console.log(
+          `Number of messages for ${message_obj.id}:${
+            message_obj.total_messages
+          }. Time Elapsed: ${time_since_start(
+            start_time
+          )} | Time Elapsed (Message Count): ${time_since_start(
+            Get_Message_start_time
+          )}`
+        );
+        users_db.push({
+          updateOne: {
+            filter: { id: message_obj.id },
+            update: {
+              $set: message_obj,
+            },
+            upsert: true, // <<==== upsert in every document
+          },
         });
+        try {
+          await UserModel.collection.bulkWrite(users_db);
+          // const writeDb = await User.insertMany();
+        } catch (err) {
+          console.log("db error:", err);
+        }
 
         if (status >= 300) {
           count_failure++;
